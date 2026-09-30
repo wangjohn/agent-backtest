@@ -18,12 +18,14 @@ products) on someone else's tasks, in someone else's harness, and a
 70% score on a public set can be 30% on your codebase. Vendor comparisons
 are one-off and decay as soon as either product ships a new release.
 
-Meanwhile, anyone using [agent-archive](https://github.com/wangjohn/agent-archive)
-already has the raw material for a better answer: a filtered, normalized
-record of every Claude Code, Codex, and Cursor session they have run, in
-their own bucket. Each session is a real task someone cared about, with the
-prompts that described it, the corrections that steered it, and (often) the
-change that eventually shipped.
+Meanwhile, anyone using a coding agent already has the raw material for a
+better answer: the session transcripts Claude Code, Codex, and Cursor keep on
+their machine, and, for anyone running
+[agent-archive](https://github.com/wangjohn/agent-archive), a longer,
+filtered, normalized record of every session across machines in their own
+bucket. Each session is a real task someone cared about, with the prompts
+that described it, the corrections that steered it, and (often) the change
+that eventually shipped.
 
 agent-backtest turns those sessions into a **private benchmark** and
 **backtests** agent products against it: rebuild the repo as it was when the
@@ -46,9 +48,13 @@ what each one produces, and report quality against cost per kind of task.
 5. **Local-first and private.** Code, transcripts, and credentials never
    leave the user's machine or bucket, except to the model providers the
    user chose to benchmark.
-6. **Usable by other people on their own archives**, not only by the
+6. **Usable by other people on their own sessions**, not only by the
    author: high-precision task building with hard automatic gates, so a
    non-expert approving tasks can't approve a broken one.
+7. **Easy to try.** Works on the transcripts already on the machine, with
+   only the agent-archive binary installed (no hooks, no bucket, no setup).
+   A full agent-archive setup is an upgrade (longer history, several
+   machines, recorded start commits), not a requirement.
 
 ## Non-goals (v0)
 
@@ -99,7 +105,7 @@ PR-mining conventions (fail-to-pass), and environment-building techniques
 
 | Term | Meaning |
 | --- | --- |
-| **Session** | One archived agent-archive session. |
+| **Session** | One coding-agent session, read either from the agent-archive bucket or from a transcript file on this machine (see [Session sources](#session-sources)). |
 | **Candidate** | A session that passed selection and may become a task. |
 | **Task** | A self-contained, replayable benchmark item: instruction, environment, graders, reference solution, provenance. Stored as a Harbor task directory. |
 | **Contestant** | A whole agent setup: harness + harness version + model + reasoning effort + config (instruction files, skills, MCP servers). |
@@ -112,7 +118,8 @@ PR-mining conventions (fail-to-pass), and environment-building techniques
 
 ```mermaid
 flowchart LR
-  AA[("agent-archive<br/>bucket")] -- "eval export (JSON)" --> C["candidates<br/>filter + classify"]
+  AA[("agent-archive<br/>bucket")] -- "eval export (JSONL)" --> C["candidates<br/>filter + classify"]
+  LT[("local transcripts<br/>~/.claude · ~/.codex · Cursor")] -- "eval export --scan<br/>(agent-archive binary, no setup)" --> C
   C --> B["build<br/>instruction · env · tests · rubric · reference"]
   B --> G{"gates<br/>(hard, automatic)"}
   G -- fail --> X["discarded<br/>(reason recorded)"]
@@ -133,9 +140,10 @@ Division of labor:
 - **Harbor** owns sandboxes, running the contestants' real CLIs, the
   per-task verifier (grading layer 1), attempts, concurrency, and trajectory
   capture.
-- **agent-archive** owns capture and the export format. It is a separate
-  project with its own release cycle; we depend only on its documented
-  export (see [Input contract](#input-contract-agent-archive)).
+- **agent-archive** owns capture, transcript parsing, the privacy filter,
+  and the export format, for both archived sessions and local transcript
+  files. It is a separate project with its own release cycle; we depend only
+  on its documented export (see [Session sources](#session-sources)).
 
 Why Harbor: it already runs `claude-code`, `codex`, and `cursor-cli` as
 installed agents, in Docker locally or on many cloud sandboxes; it has an
@@ -144,37 +152,96 @@ the grader self-test for free; its verifier supports multi-metric
 `reward.json`; and it has a Python API as well as a CLI. It requires
 Python ≥ 3.12, which sets ours.
 
-## Input contract: agent-archive
+## Session sources
 
-agent-backtest reads sessions only through a documented, versioned export.
-Three pieces of groundwork are being added to agent-archive for this
-project (separate PRs there):
+Two sources, **both read through the `agent-archive` binary**. agent-backtest
+never parses native transcripts itself: agent-archive already has adapters
+for all three harnesses, tracks their format changes, and applies the
+privacy filter (credentials and injected instructions removed) before
+anything reaches the builder or judge models. Parsing raw transcripts here
+would duplicate that work and skip the filter.
+
+| | **Archive** | **Local** |
+| --- | --- | --- |
+| Needs | agent-archive set up (hooks, bucket) | Only the `agent-archive` binary; no setup |
+| Reads | The bucket: metadata sidecars and source bundles | Transcript files on this machine, the way `agent-archive handoff --file` already does |
+| History | 90 days by default, every machine that syncs to the bucket | Whatever the apps keep locally (Claude Code deletes old transcripts after a period; see open questions), this machine only |
+| Start commit | Recorded (once agent-archive ships it); inferred for older sessions | Always inferred |
+| Explicit feedback | Yes (`agent-archive feedback`) | No |
+| Replay marker | Recorded by the hook | Not recorded; excluded by working directory instead (see below) |
+
+Both sources produce the same export records, so everything after this
+stage is the same. When a session exists in both, the archive record wins.
+The report states which source each task came from, and in local mode it
+says what a full agent-archive setup would add (for example, "27 sessions
+found on this machine; agent-archive keeps 90 days across machines").
+
+### What agent-archive provides
+
+These are being added to agent-archive for this project, as separate PRs
+there. The agent-archive spec is the source of truth; this list only says
+what we need.
 
 1. **Start and end commit.** HEAD SHA at session start, whether the tree
    was dirty, HEAD SHA at session end. Today only the branch name is
    recorded.
-2. **Replay marking.** Sessions run *by* agent-backtest (contestants inside
-   Harbor, the builder agent) are marked, hidden from the user's normal
-   `list`, and never become `handoff --latest`. Their capture is still
-   useful: tokens, tools, and transcripts in the same format as real
-   sessions.
+2. **Replay marking.** Sessions run *by* agent-backtest are marked, hidden
+   from the user's normal `list`, and never become `handoff --latest`.
 3. **An export command and JSON Schema** (working name
-   `agent-archive eval export SESSION_ID`): harness and version, models,
-   project name, branch, start/end SHAs, dirty flag, replay marker,
-   timestamps, turn outcome, counts, tokens, files touched, tools used,
-   explicit feedback, the ordered filtered human prompts, and the final
-   response. Everything already filtered; nothing new leaves the machine.
+   `agent-archive eval export`): harness and version, models, project name,
+   branch, start/end SHAs, dirty flag, replay marker, timestamps, turn
+   outcome, counts, tokens, files touched, tools used, explicit feedback,
+   the ordered filtered human prompts, and the final response. Everything
+   already filtered; nothing new leaves the machine.
+4. **Local mode for the export.** `--file PATH --harness NAME` for one
+   transcript, and `--scan` to discover transcripts on this machine, reusing
+   the discovery `agent-archive backfill` already does (same `--harness`,
+   `--project`, `--since`, `--until` filters). Like `handoff --file`, local
+   mode needs no setup and never creates the data directory.
+5. **Bulk export**, so the pipeline never spawns one process per session:
+   - **JSON Lines on stdout**, one record per session, streamed as each
+     finishes, each carrying its session ID and source.
+   - **Two detail levels.** `--detail metadata` (identity, commits, counts,
+     files touched, tools, outcome; no conversation text) is the cheap first
+     pass. `--detail full` adds prompts and the final response, and is run
+     only for sessions that survive the metadata filters.
+   - **Selection by list.** `--ids-from -` reads session IDs or transcript
+     paths from stdin, so the second pass exports exactly the survivors in
+     one process.
+   - **Bounded parallelism** inside agent-archive (a worker pool; parsing and
+     filtering are the cost, not process start-up).
+   - **Per-record errors.** A transcript that fails to parse becomes an
+     error record on its own line; it never fails the batch.
+   - For the archive source, the metadata pass reads sidecars only (as
+     `list` does) and downloads source bundles only for the full pass.
 
 agent-backtest pins a supported range of the export's `schema_version` and
-runs contract tests in CI against a pinned agent-archive release. The
-agent-archive spec is the source of truth; this section only says what we
-need from it.
+runs contract tests in CI against a pinned agent-archive release.
 
-**Sessions without a start SHA** (captured before (1) shipped, or
-backfilled): infer the start commit as the last commit on the recorded
-branch before `started_at`, then confirm it by checking that the session's
-first recorded edits apply cleanly. If they don't, the session is not a
-candidate. This lets a new user get a benchmark from the history they
+### Caching
+
+agent-backtest caches export records in the workspace, keyed by session ID
+plus, for local files, path, size, and modification time, plus the
+agent-archive version and the export's filter and parser versions. A re-run
+only exports sessions that are new or changed. The cache lives in
+agent-backtest, not agent-archive, so local mode stays setup-free.
+
+### Excluding our own sessions
+
+Contestants run inside Harbor's containers and never write to the user's
+transcripts. The builder agent runs on the host, though (`claude -p`,
+`codex exec`), so its sessions would appear in local history and could be
+picked as candidates. The builder always runs from a working directory
+under the workspace (and sets agent-archive's replay marker), and both
+sources exclude sessions from those directories.
+
+### Sessions without a start commit
+
+All local sessions, and archived sessions captured before (1) shipped or
+imported with `backfill`: infer the start commit as the last commit on the
+recorded branch before `started_at`, then confirm it by checking that the
+session's first recorded edits apply cleanly. If they don't, the session is
+not a candidate. This lets a new user get a benchmark from the history they
 already have.
 
 ## Stage 1 — Candidates
@@ -182,11 +249,17 @@ already have.
 Goal: from hundreds of sessions, a short list worth the cost of building.
 Aim for **high precision, low recall**; discarding is cheap.
 
+Stage 1 runs in two passes so the expensive work is done only for sessions
+that might survive: a bulk `--detail metadata` export feeds the
+deterministic filters, then one bulk `--detail full` export of the
+survivors feeds the LLM classification.
+
 Deterministic filters (from metadata, no LLM):
 
 - The session edited files and has a start commit (captured or inferred)
   in a git repo the user can check out.
-- Not a replay session (the agent-archive marker).
+- Not a replay or builder session (the agent-archive marker, or a working
+  directory under a workspace).
 - Parser status `complete` or `partial` (not `failed`).
 - Not trivial: excludes sessions with only version bumps, lockfile or
   generated-file changes, or a single tiny edit.
@@ -427,6 +500,7 @@ private data and must never be pushed to a public remote.
 ```
 my-benchmark/
 ├── backtest.toml     # sources, contestants, judges, defaults
+├── .cache/           # export records, see Session sources
 ├── candidates/       # stage 1 output
 ├── tasks/            # approved Harbor tasks (a Harbor dataset)
 ├── rejected/         # discarded tasks with reasons
@@ -441,7 +515,7 @@ my-benchmark/
 | --- | --- |
 | `backtest init` | Create a workspace and `backtest.toml`. |
 | `backtest doctor` | Check Docker, Harbor, agent-archive, installed agent CLIs and credentials. |
-| `backtest candidates` | Stage 1. |
+| `backtest candidates [--source archive\|local\|auto]` | Stage 1. `auto` (default) uses the archive when agent-archive is set up, plus local transcripts it hasn't captured. |
 | `backtest build [ID…]` | Stage 2, resumable. |
 | `backtest check [ID…]` | Stage 3 gates. |
 | `backtest review` | Stage 4 page and decisions. |
@@ -497,8 +571,10 @@ agent's help. Run 2 contestants × 3 attempts. Learn whether environment
 building or grading is the real bottleneck, and confirm the Harbor details
 in the open questions. No automation yet.
 
-**M2 — input and candidates.** Read agent-archive's export; start-SHA
-inference; stage 1 with the yield report.
+**M2 — sources and candidates.** Both session sources through
+agent-archive's bulk export (archive and local), the export cache,
+start-commit inference, and stage 1 with the yield report. Local mode is
+the default path for someone trying the tool for the first time.
 
 **M3 — builder and gates.** Automate the steps M1 showed to be repetitive;
 all Stage 3 gates.
@@ -518,7 +594,6 @@ docs, supported-stacks list, first outside users on 2–3 different stacks.
   scores, cost; never code or transcripts) for an aggregate view across
   users. Only after the privacy design holds up.
 - **Builder as an agent skill** installed alongside agent-archive's skills.
-- **Other session sources** besides agent-archive (raw local transcripts).
 
 ## Open questions
 
@@ -539,7 +614,12 @@ docs, supported-stacks list, first outside users on 2–3 different stacks.
    config by default. Current plan: the user's, identical across harnesses.
 7. **Investigation tasks.** Whether key-fact grading is reliable enough to
    include them in v0 or whether v0 is code-change tasks only.
-8. **Agent installation versus the network allowlist.** Harbor's installed
+8. **Local transcript retention.** How long each app keeps local
+   transcripts by default (Claude Code removes old ones after a configurable
+   period), so local mode can tell users how much history they can expect.
+   Also check whether Codex's own session files record the commit, which
+   would make inference unnecessary there.
+9. **Agent installation versus the network allowlist.** Harbor's installed
    agents may download their CLI inside the container at setup time. Check
    whether setup happens before the agent's `network_mode` applies, or bake
    the CLIs into the base image instead.
