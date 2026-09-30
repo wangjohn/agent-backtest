@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# agent-backtest
+# Workspaces hold private code, transcripts, and results. Keep them out of
+# this repository; see docs/specs/v0-plan.md#workspace-layout.
+/workspaces/
