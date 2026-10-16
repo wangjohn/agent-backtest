@@ -5,8 +5,9 @@
 
 Backtest coding agents (Claude Code, Codex, Cursor) on benchmarks built from your own past sessions.
 
-> **Status: planning.** Nothing works yet beyond `backtest --version`. The design is in
-> [docs/specs/v0-plan.md](docs/specs/v0-plan.md).
+> **Status: manual pilot support.** `backtest pilot` can inspect supported exports, validate
+> frozen hand-built packages, and print a comparison plan. It does not run agents. See
+> [the manual pilot spec](docs/specs/manual-pilot.md) and [v0 plan](docs/specs/v0-plan.md).
 
 Public leaderboards compare models on someone else's tasks. agent-backtest answers a narrower,
 more useful question: **on the work you actually do, which agent product and model should you
@@ -28,6 +29,10 @@ keeps for you:
 
 Everything runs locally. Your code and transcripts go only to the model providers you choose to
 benchmark, never to this project.
+
+The offline pilot commands send nothing off this machine. Keep real exports, code, packages,
+and results in a private workspace outside this repository. Human task review, isolated Harbor
+qualification, contestant selection, and spending approval remain explicit gates.
 
 ## Development
 
