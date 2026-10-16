@@ -37,7 +37,7 @@ is always false. Input errors return 2. All commands print errors on stderr.
 The authoritative Archive references are
 [eval-export.md](https://github.com/wangjohn/agent-archive/blob/main/dev/specs/eval-export.md),
 [export schema](https://github.com/wangjohn/agent-archive/blob/main/schemas/eval-export.schema.json),
-and [replay-sessions.md](https://github.com/wangjohn/agent-archive/blob/main/dev/specs/replay-sessions.md).
+and [replay-sessions.md](https://github.com/wangjohn/agent-archive/blob/main/dev/proposals/implemented/replay-sessions.md).
 Export and replay marking are implemented upstream; the older plan's “being added” language is
 historical. Export records may finish out of order. Match exact session identity and optional
 `revision_id`, preserve the exact export bytes and producing Archive version, and use supported
