@@ -24,7 +24,8 @@ backtest pilot plan /private-workspace/run.json /private-workspace/packages/task
 prompt count, truncation and replay flags. It omits prompts, final responses, error messages,
 and local source paths. It accepts Agent Archive eval-export schema version 1 only, including
 per-record errors, unknown error codes, and additive fields. It checks the field subset consumed
-here, **not the complete upstream JSON Schema**. Native transcript formats are never parsed.
+here, **not the complete upstream JSON Schema**. Full records may omit `files_edited` when edit
+evidence is unavailable. Native transcript formats are never parsed.
 Malformed consumed fields or unsupported schema versions fail closed. An error record remains
 an error, not a candidate. A valid inspection does not select or qualify a task.
 

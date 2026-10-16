@@ -208,7 +208,7 @@ def export_record(record: Object) -> Object:
                 raise Invalid("prompt text must be a string")
             if "truncated" in entry and entry["truncated"] is not True:
                 raise Invalid("prompt truncated must be true when present")
-        for filename in items(record.get("files_edited"), "files_edited"):
+        for filename in items(record.get("files_edited", []), "files_edited"):
             string(filename, "edited file")
     elif any(key in record for key in ("prompts", "final_response", "files_edited", "feedback")):
         raise Invalid("metadata exports cannot contain full-detail fields")

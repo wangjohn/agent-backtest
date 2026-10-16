@@ -154,6 +154,22 @@ def test_additive_export_fields_and_unknown_error_codes_are_accepted(tmp_path: P
     assert len(cast(list[object], report["records"])) == 2
 
 
+def test_full_export_accepts_unavailable_edited_file_evidence(tmp_path: Path) -> None:
+    manifest = make_package(tmp_path, kind="real")
+    path = tmp_path / "private/export.jsonl"
+    record = read_json(path)
+    del record["files_edited"]
+    path.write_text(json.dumps(record) + "\n")
+    freeze(tmp_path, manifest)
+    assert cast(list[Object], inspect_export(path)["records"])[0]["prompt_count"] == 2
+    assert validate_package(tmp_path)["state"] == "draft"
+    # Absence is allowed by Archive v1; a present value must still be an array of paths.
+    record["files_edited"] = None
+    path.write_text(json.dumps(record) + "\n")
+    with pytest.raises(Invalid, match="files_edited: expected array"):
+        inspect_export(path)
+
+
 @pytest.mark.parametrize(
     "text",
     [
